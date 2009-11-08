@@ -26,8 +26,6 @@
 #include "apr_base64.h"
 #include "commons.h"
 #include "memcached_funcs.h"
-#include "memcache.h"
-#include <libmemcached/memcached.h>
 
 #define MEMC_KEY_PREFIX_COUNTING "count"
 #define MEMC_KEY_PREFIX_BLOCKING "block"
@@ -500,7 +498,7 @@ static int interval_limit_access_checker(request_rec *r)
         }
         if (overlimit_rules) {
             apr_table_setn(r->subprocess_env, "overlimit_rules", overlimit_rules);
-            apr_table_set(r->headers_in, "overlimit_rules", overlimit_rules)
+            apr_table_set(r->headers_in, "overlimit_rules", overlimit_rules);
         }
     }
     if (block_access) {
@@ -526,7 +524,7 @@ static const command_rec interval_limit_cmds[] =
     AP_INIT_TAKE1("IntervalLimitMemcachedAddrPort", set_memc_addr, NULL,
         OR_FILEINFO, "Liste of the memcached address( ip or host adresse(s) and port ':' separated). The addresses are ',' comma separated"),
     AP_INIT_RAW_ARGS("IntervalLimitRule", set_rule, NULL,
-        OR_FILEINFO, "an URL-applied regexp-pattern and a substitution URL"),
+        OR_FILEINFO, "set an interval limit rule line. multiple rules can be defined."),
     {NULL}
 };
 

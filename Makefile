@@ -14,7 +14,7 @@ APXS=$(ap_basedir)/bin/apxs
 APACHECTL=$(ap_basedir)/bin/apachectl
 
 INCLUDES=-I/usr/local/include -I/usr/include
-SH_LIBS=-L/usr/local/lib -lmemcached -L/usr/lib -lmemcache
+SH_LIBS=-L/usr/local/lib -lmemcached
 #   the default target
 all: local-shared-build
 
