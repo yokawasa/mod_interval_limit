@@ -47,13 +47,13 @@ typedef struct {
 } interval_limit_config;
 
 typedef enum {
-    LIMIT_IP= 0,
-    LIMIT_COOKIE
-} limit_type;
+    THRESHOLD_IP= 0,
+    THRESHOLD_COOKIE
+} threshold_type;
 
 typedef struct {
     char  *name;                /* the rule name                               */
-    limit_type type;            /* the limit type                              */
+    threshold_type type;        /* the threshold type                              */
     long max_count;             /* maximum hit count per interval              */
     long interval;              /* interval period (sec)                       */
     long blocking_period;       /* blocking period for limit reached ip/cookie */
@@ -63,7 +63,7 @@ typedef struct {
 typedef struct {
     char *name;
     int block;
-} over_limit_entry;
+} threshold_exceeded_entry;
 
 static const char* parse_memc_addr(apr_pool_t *p, const char *val, memc_addr_entry *memc_addr)
 {
@@ -126,7 +126,7 @@ static const char* parse_rule_line(apr_pool_t *p, const char *val, rule_entry *r
         return "parse_rule_line: invalid rule (arg2)";
     }
     val = val+pos;
-    rule->type = ( strcmp(arg2, "ip")==0 ) ? LIMIT_IP : LIMIT_COOKIE;
+    rule->type = ( strcmp(arg2, "ip")==0 ) ? THRESHOLD_IP : THRESHOLD_COOKIE;
     if ((pos = nextarg(p, val, &arg3))==0) {
         return "parse_rule_line: invalid rule (arg3)";
     }
@@ -349,14 +349,14 @@ static int get_block_and_count_value(request_rec *r, const char *blockkey, const
     return 0;
 }
 
-static int apply_rules(request_rec *r, apr_array_header_t *rules, apr_array_header_t *overlimits ) {
+static int apply_rules(request_rec *r, apr_array_header_t *rules, apr_array_header_t *threshold_exceededs ) {
     int i, ret, go_to_blockedperiod;
     uint32_t incred_count;
     rule_entry *rule, *rs;
     char *id, *cookie;
     char *blockkey, *countkey, *blockval, *countval;
     char *mgetkeys;
-    over_limit_entry *overlimit;
+    threshold_exceeded_entry *threshold_exceeded;
     interval_limit_config *conf = ap_get_module_config(r->per_dir_config, &interval_limit_module);
 
     if (rules) {
@@ -380,9 +380,9 @@ static int apply_rules(request_rec *r, apr_array_header_t *rules, apr_array_head
                         rule->interval,
                         rule->blocking_period,
                         rule->block );
-            if ( rule->type == LIMIT_IP) {
+            if ( rule->type == THRESHOLD_IP) {
                 id = r->connection->remote_ip;
-            } else if (rule->type == LIMIT_COOKIE) {
+            } else if (rule->type == THRESHOLD_COOKIE) {
                 cookie = find_cookie(r, conf->cookie_name);
                 if (!cookie) {
                     continue;
@@ -412,18 +412,18 @@ static int apply_rules(request_rec *r, apr_array_header_t *rules, apr_array_head
             go_to_blockedperiod = 0;
             // check if the id is not in the blocking period
             if ( blockval && !strcmp(blockval, MEMC_VAl_BLOCKED_PERIOD) ) {
-                // append to overlimit
-                overlimit = (over_limit_entry *)apr_array_push(overlimits);
-                overlimit->name = rule->name;
-                overlimit->block = rule->block;
+                // append to threshold_exceeded
+                threshold_exceeded = (threshold_exceeded_entry *)apr_array_push(threshold_exceededs);
+                threshold_exceeded->name = rule->name;
+                threshold_exceeded->block = rule->block;
                 ILLOG_DEBUG(r, MODTAG "apply_rule result rule=%s state=OverLimited block=%d",
                             rule->name, rule->block );
                 continue;
             }
-            // check if the count has already been overlimited
+            // check if the count has already exceeded threshold
             if ( countval && atoi(countval) >= rule->max_count) {
                 go_to_blockedperiod = 1;
-            // check if the count hits overlimit after incremented
+            // check if the count hits threshold after incremented
             } else {
                 ret = memcached_incr_func(r, countkey, rule->interval, &incred_count);
                 if (ret < 0) {
@@ -435,10 +435,10 @@ static int apply_rules(request_rec *r, apr_array_header_t *rules, apr_array_head
                 }
             }
             if (go_to_blockedperiod){
-                // append to overlimit
-                overlimit = (over_limit_entry *)apr_array_push(overlimits);
-                overlimit->name = rule->name;
-                overlimit->block = rule->block;
+                // append to threshold_exceeded
+                threshold_exceeded = (threshold_exceeded_entry *)apr_array_push(threshold_exceededs);
+                threshold_exceeded->name = rule->name;
+                threshold_exceeded->block = rule->block;
 
                 // set blockperiod flag
                 ret = memcached_set_func(r, blockkey, (const char*)MEMC_VAl_BLOCKED_PERIOD, rule->blocking_period);
@@ -465,8 +465,8 @@ static int interval_limit_access_checker(request_rec *r)
 {
     interval_limit_config *conf = ap_get_module_config(r->per_dir_config, &interval_limit_module);
     int i, block_access;
-    char *overlimit_rules=NULL;
-    over_limit_entry *overlimit, *ol;
+    char *threshold_exceeded_rules=NULL;
+    threshold_exceeded_entry *threshold_exceeded, *ol;
 
     if (!conf || !conf->enabled) {
         return DECLINED;
@@ -475,30 +475,30 @@ static int interval_limit_access_checker(request_rec *r)
         return DECLINED;
     }
     block_access =0;
-    apr_array_header_t *overlimits =apr_array_make(r->pool, 2, sizeof(over_limit_entry));
-    if(  apply_rules(r, conf->rules, overlimits) !=0 ) {
+    apr_array_header_t *threshold_exceededs =apr_array_make(r->pool, 2, sizeof(threshold_exceeded_entry));
+    if(  apply_rules(r, conf->rules, threshold_exceededs) !=0 ) {
         ILLOG_ERROR(r, MODTAG "apply_rules failure!");
         return DECLINED;
     }
-    if (overlimits->nelts > 0) {
-        ol = (over_limit_entry *)overlimits->elts;
-        for ( i =0; i <overlimits->nelts; i++) {
-            overlimit =  &ol[i];
-            ILLOG_DEBUG(r, MODTAG "dump over limit: name=%s block=%d",
-                                        overlimit->name, overlimit->block);
+    if (threshold_exceededs->nelts > 0) {
+        ol = (threshold_exceeded_entry *)threshold_exceededs->elts;
+        for ( i =0; i <threshold_exceededs->nelts; i++) {
+            threshold_exceeded =  &ol[i];
+            ILLOG_DEBUG(r, MODTAG "dump threshold_exceeded: name=%s block=%d",
+                                        threshold_exceeded->name, threshold_exceeded->block);
 
-            if (overlimit_rules == NULL) {
-                overlimit_rules = (char*)apr_pstrdup(r->pool, overlimit->name);
+            if (threshold_exceeded_rules == NULL) {
+                threshold_exceeded_rules = (char*)apr_pstrdup(r->pool, threshold_exceeded->name);
             } else {
-                overlimit_rules = (char*)apr_psprintf(r->pool, "%s,%s", overlimit_rules, overlimit->name);
+                threshold_exceeded_rules = (char*)apr_psprintf(r->pool, "%s,%s", threshold_exceeded_rules, threshold_exceeded->name);
             }
-            if (overlimit->block){
+            if (threshold_exceeded->block){
                 block_access = 1;
             }
         }
-        if (overlimit_rules) {
-            apr_table_setn(r->subprocess_env, "overlimit_rules", overlimit_rules);
-            apr_table_set(r->headers_in, "overlimit_rules", overlimit_rules);
+        if (threshold_exceeded_rules) {
+            apr_table_setn(r->subprocess_env, "threshold_exceeded_rules", threshold_exceeded_rules);
+            apr_table_set(r->headers_in, "threshold_exceeded_rules", threshold_exceeded_rules);
         }
     }
     if (block_access) {

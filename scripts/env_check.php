@@ -2,7 +2,7 @@
 <head><title>ENV CHECKER</title></head>
 <body>
 <?php
-printf ("overlimit_rules->%s\n", getenv ( "overlimit_rules" ) );
+printf ("threshold_exceeded_rules->%s\n", getenv ( "threshold_exceeded_rules" ) );
 ?>
 </body>
 </html>
