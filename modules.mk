@@ -1,6 +1,6 @@
-MOD_LIMIT_PERIODIC = mod_interval_limit memcached_funcs\
+MOD_LIMIT_PERIODIC = mod_interval_limit memcached_funcs
 
-HEADER = memcached_funcs.h \
+HEADER = memcached_funcs.h commons.h
 
 ${MOD_LIMIT_PERIODIC:=.slo}: ${HEADER}
 ${MOD_LIMIT_PERIODIC:=.lo}: ${HEADER}
