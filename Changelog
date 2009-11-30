@@ -1,2 +1,10 @@
-version 0.1 - Nov 08, 2009
-* Initial Release
+2009-11-29
+    * initial entry: README
+    * fix: add validation check on IntervalLimitRule directive configuration
+
+2009-11-28
+    * fix: modules.mk
+    * fix: interface functions' name on memcached_func.h to avoid symbol name collision.
+
+2009-11-08  [Version 0.0.1 released]
+    * Initial Release
