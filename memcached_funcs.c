@@ -25,7 +25,7 @@ static memcached_st *memc = NULL;
 static memcached_server_st *servers = NULL;
 
 static apr_status_t
-_cleanup_register_func(void *dummy)
+_cleanup_register_ilimit_func(void *dummy)
 {
     if(servers){
         memcached_server_list_free(servers);
@@ -38,10 +38,10 @@ _cleanup_register_func(void *dummy)
     return APR_SUCCESS;
 }
 
-int _init_func(request_rec *r, apr_array_header_t *memc_addrs)
+int _init_ilimit_func(request_rec *r, apr_array_header_t *memc_addrs)
 {
     int i;
-    memc_addr_entry *memc_addr, *ma;
+    memc_addr_ilimit_entry *memc_addr, *ma;
     memcached_return rc;
     memc = memcached_create(NULL);
     int binary_available = 0;
@@ -50,7 +50,7 @@ int _init_func(request_rec *r, apr_array_header_t *memc_addrs)
         return -1;
     }
     if(memc_addrs) {
-        ma = (memc_addr_entry *)memc_addrs->elts;
+        ma = (memc_addr_ilimit_entry *)memc_addrs->elts;
         if (memc_addrs->nelts < 1) {
             ILLOG_ERROR( r, MODTAG "no memcached server to push!");
             return -1;
@@ -75,18 +75,33 @@ int _init_func(request_rec *r, apr_array_header_t *memc_addrs)
             return -1;
         }
 
-       // check memcached version for binary protocol
+       /*
+        *================================================================================
+        * minimun version of  memcached for incr command with libmemcached
+        * ================================================================================
+        *
+        * there is 2 pre-requisite for incr command to use.
+        *  1. libmemcached support incr command execution only in using binary protocol
+        *  2. binary protocol is available with memcached-1.4.0 or up
+        *     actually incr/decr commands are available with memcached > 1.2.6
+        *  taking those 2 pre-requisites into consideration, for incr command to be used
+        *  with libmemcached, memcached version has to be 1.4.0 or up.
+        */
         memcached_version(memc);
         for ( i =0; i <memc->number_of_hosts; i++) {
-            if (memc->hosts[i].major_version >= 1 && memc->hosts[i].minor_version > 2) {
-                ILLOG_DEBUG(r, MODTAG "memcached version OK: server=%s:%d major=%d minor=%d",
-                    memc->hosts[i].hostname,memc->hosts[i].port,
-                    memc->hosts[i].major_version, memc->hosts[i].minor_version);
+            if (memc->hosts[i].major_version >= 1 && memc->hosts[i].minor_version >= 4) {
+//                ILLOG_DEBUG(r, MODTAG "use \"incr command\" of memcached for count increment :"
+//                    "server=%s:%d major=%d minor=%d",
+//                    memc->hosts[i].hostname,memc->hosts[i].port,
+//                    memc->hosts[i].major_version, memc->hosts[i].minor_version);
+                    binary_available=1;
             } else {
                 if (memc->hosts[i].major_version != 0 && memc->hosts[i].minor_version != 0) {
                     ILLOG_DEBUG(r,
-                        MODTAG "memcached version need to be higher than 1.2 " "(binary protocol NOT available): server=%s:%d major=%d minor=%d",
-                        memc->hosts[i].hostname,memc->hosts[i].port,
+                        MODTAG "memcached version has to be 1.4.0 or up for count increment "
+                        "to be done by \"incr command\" with libmemcached :"
+                        "server=%s:%d major=%d minor=%d",
+                        memc->hosts[i].hostname, memc->hosts[i].port,
                         memc->hosts[i].major_version, memc->hosts[i].minor_version);
                     binary_available=0;
                 }
@@ -101,19 +116,19 @@ int _init_func(request_rec *r, apr_array_header_t *memc_addrs)
             }
         }
     }
-    apr_pool_cleanup_register(r->pool, NULL, _cleanup_register_func, _cleanup_register_func);
+    apr_pool_cleanup_register(r->pool, NULL, _cleanup_register_ilimit_func, _cleanup_register_ilimit_func);
     return 0;
 }
 
-int memcached_init_func(request_rec *r, apr_array_header_t *memc_addrs)
+int memcached_init_ilimit_func(request_rec *r, apr_array_header_t *memc_addrs)
 {
     if (!memc) {
-        return _init_func(r, memc_addrs);
+        return _init_ilimit_func(r, memc_addrs);
     }
     return 0;
 }
 
-int memcached_get_func(request_rec *r, const char *key, char **val)
+int memcached_get_ilimit_func(request_rec *r, const char *key, char **val)
 {
     memcached_return rc;
     char *received;
@@ -149,7 +164,7 @@ char* _carrtostr(request_rec *r, const char **carr, size_t num ) {
     return str;
 }
 
-int memcached_mget_func(request_rec *r, const char **keys, size_t keynum, apr_table_t *results)
+int memcached_mget_ilimit_func(request_rec *r, const char **keys, size_t keynum, apr_table_t *results)
 {
     memcached_return rc;
     int i;
@@ -162,8 +177,8 @@ int memcached_mget_func(request_rec *r, const char **keys, size_t keynum, apr_ta
     if ( !r || !keys || keynum<1 ){
         return -1;
     }
-    // alloc for key_len
-   key_len = apr_pcalloc(r->pool, (sizeof(size_t))* keynum);
+    /* alloc for key_len */
+    key_len = apr_pcalloc(r->pool, (sizeof(size_t))* keynum);
     for (i=0; i< keynum; i++) {
         *(key_len + i ) = strlen( *(keys + i) );
     }
@@ -177,7 +192,7 @@ int memcached_mget_func(request_rec *r, const char **keys, size_t keynum, apr_ta
     if (!results) {
          results = apr_table_make(r->pool, keynum);
     }
-    // alloc for ret_key
+    /* alloc for ret_key */
     ret_key = apr_palloc(r->pool, MEMCACHED_MAX_KEY);
     while( (ret_val = memcached_fetch(memc, ret_key, &ret_key_len, &ret_val_len, &flags, &rc) )) {
         if (rc != MEMCACHED_SUCCESS) {
@@ -190,7 +205,7 @@ int memcached_mget_func(request_rec *r, const char **keys, size_t keynum, apr_ta
     return 0;
 }
 
-int memcached_set_func(request_rec *r, const char *key, const char *val, time_t expire)
+int memcached_set_ilimit_func(request_rec *r, const char *key, const char *val, time_t expire)
 {
     memcached_return rc;
     if (!r || !key || !val) {
@@ -209,7 +224,7 @@ int memcached_set_func(request_rec *r, const char *key, const char *val, time_t 
     return 0;
 }
 
-int memcached_del_func(request_rec *r, char *key)
+int memcached_del_ilimit_func(request_rec *r, char *key)
 {
     memcached_return rc;
     if (!r || !key) {
@@ -224,52 +239,38 @@ int memcached_del_func(request_rec *r, char *key)
     return 0;
 }
 
-int memcached_incr_func(request_rec *r, char *key, time_t expire, uint32_t *new_num )
+int memcached_incr_ilimit_func(request_rec *r, char *key, time_t expire, uint32_t *new_num )
 {
-// this increment interface is available only with binary protocol
-// as far as i've checked, unitl the version 0.34 it is the case.
+/* this increment interface is available only with binary protocol */
+/* as far as i've checked, unitl the version 0.34 it is the case.  */
     memcached_return rc;
     uint64_t _new_num;
+    char *tmp;
     if (!r || !key) {
         return -1;
     }
     if ( memcached_behavior_get(memc, MEMCACHED_BEHAVIOR_BINARY_PROTOCOL) !=1 ) {
-        ILLOG_ERROR(r,
-            MODTAG "binary protocol disabled, thus cannot exec memcached_increment_with_initial: key=%s", key);
-        return -1;
-    }
-    rc= memcached_increment_with_initial(memc, key, strlen(key),
-                                         1, 1, expire, &_new_num);
-    if (rc != MEMCACHED_SUCCESS) {
-        ILLOG_ERROR(r, MODTAG "memcached_increment_with_initial failure: key=%s rc=%d msg=%s",
-                                key, rc, memcached_strerror(memc, rc) );
-        return -1;
+        if ( memcached_get_ilimit_func(r, key, &tmp) !=0 ) {
+            return -1;
+        }
+        _new_num = atoi(tmp) + 1;
+        tmp = (char*)apr_psprintf(r->pool, "%d", _new_num);
+        if ( memcached_set_ilimit_func(r, key, tmp, expire) !=0 ) {
+            return -1;
+        }
+    } else {
+        rc= memcached_increment_with_initial(memc, key, strlen(key),
+                                             1, 1, expire, &_new_num);
+        if (rc != MEMCACHED_SUCCESS) {
+            ILLOG_ERROR(r, MODTAG "memcached_increment_with_initial failure: key=%s rc=%d msg=%s",
+                                     key, rc, memcached_strerror(memc, rc) );
+            return -1;
+        }
     }
     *new_num = (uint32_t)_new_num;
     return 0;
 }
 
-int memcached_decr_func(request_rec *r, char *key, time_t expire, uint32_t* new_num)
-{
-// this decrement interface is available only with binary protocol
-// as far as i've checked, unitl the version 0.34 it is the case.
-    memcached_return rc;
-    uint64_t _new_num;
-    if (!r || !key) {
-        return -1;
-    }
-    if ( memcached_behavior_get(memc, MEMCACHED_BEHAVIOR_BINARY_PROTOCOL) !=1 ) {
-        ILLOG_ERROR(r,
-            MODTAG "binary protocol disabled, thus cannot exec memcached_decrement_with_initial: key=%s", key);
-        return -1;
-    }
-    rc= memcached_decrement_with_initial(memc, key, strlen(key),
-                                         1, 1, expire, &_new_num);
-    if (rc != MEMCACHED_SUCCESS) {
-        ILLOG_ERROR(r, MODTAG "memcached_increment_with_initial failure: key=%s rc=%d msg=%s",
-                                    key, rc, memcached_strerror(memc, rc) );
-        return -1;
-    }
-    *new_num = (uint32_t)_new_num;
-    return 0;
-}
+/*
+ * vim:ts=4 et
+ */

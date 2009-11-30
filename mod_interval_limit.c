@@ -40,7 +40,6 @@ module AP_MODULE_DECLARE_DATA interval_limit_module;
 
 typedef struct {
     int enabled;
-    int log_enabled;
     apr_array_header_t *memc_addrs;
     apr_array_header_t *rules;
     char *cookie_name;
@@ -53,7 +52,7 @@ typedef enum {
 
 typedef struct {
     char  *name;                /* the rule name                               */
-    threshold_type type;        /* the threshold type                              */
+    threshold_type type;        /* the threshold type                          */
     long max_count;             /* maximum hit count per interval              */
     long interval;              /* interval period (sec)                       */
     long blocking_period;       /* blocking period for limit reached ip/cookie */
@@ -65,7 +64,7 @@ typedef struct {
     int block;
 } threshold_exceeded_entry;
 
-static const char* parse_memc_addr(apr_pool_t *p, const char *val, memc_addr_entry *memc_addr)
+static const char* parse_memc_addr(apr_pool_t *p, const char *val, memc_addr_ilimit_entry *memc_addr)
 {
     char *next, *last;
     if ( !val||!memc_addr ) {
@@ -78,6 +77,42 @@ static const char* parse_memc_addr(apr_pool_t *p, const char *val, memc_addr_ent
     memc_addr->hostname = next;
     memc_addr->port = atoi(last);
     return NULL;
+}
+
+static void dump_rules(request_rec *r, apr_array_header_t *rules)
+{
+    int i;
+    rule_entry *rule, *rs;
+    if (rules) {
+        rs = (rule_entry *)rules->elts;
+        for ( i =0; i <rules->nelts; i++) {
+            rule =  &rs[i];
+            ILLOG_DEBUG(r, MODTAG "dump rule %s type %d maxcount %d interval %d blockperiod %d block %d",
+                        rule->name,
+                        rule->type,
+                        rule->max_count,
+                        rule->interval,
+                        rule->blocking_period,
+                        rule->block );
+        }
+    }
+}
+
+static int check_rule_name_duplication(const char* name, apr_array_header_t *rules )
+{
+    int i,j;
+    rule_entry *rule, *rs;
+    if (rules) {
+        rs = (rule_entry *)rules->elts;
+        for ( i =0, j=0; i <rules->nelts; i++) {
+            rule =  &rs[i];
+            if (!strcmp(name, rule->name)) {
+                if (j > 0) return 1;
+                j++;
+            }
+        }
+    }
+    return 0;
 }
 
 static int nextarg(apr_pool_t *p, const char *val, char **arg)
@@ -111,7 +146,6 @@ static int nextarg(apr_pool_t *p, const char *val, char **arg)
 
 static const char* parse_rule_line(apr_pool_t *p, const char *val, rule_entry *rule)
 {
-    char quote;
     char *arg1, *arg2, *arg3, *arg4, *arg5, *arg6;
     int pos;
     if (!val||!rule) {
@@ -150,24 +184,6 @@ static const char* parse_rule_line(apr_pool_t *p, const char *val, rule_entry *r
     return NULL;
 }
 
-static void dump_rules(request_rec *r, apr_array_header_t *rules) {
-    int i;
-    rule_entry *rule, *rs;
-    if (rules) {
-        rs = (rule_entry *)rules->elts;
-        for ( i =0; i <rules->nelts; i++) {
-            rule =  &rs[i];
-            ILLOG_DEBUG(r, MODTAG "dump rule %s type %d maxcount %d interval %d blockperiod %d block %d",
-                        rule->name,
-                        rule->type,
-                        rule->max_count,
-                        rule->interval,
-                        rule->blocking_period,
-                        rule->block );
-        }
-    }
-}
-
 static const char *set_engine(cmd_parms *parms, void *mconfig, int arg)
 {
     interval_limit_config *conf = mconfig;
@@ -175,16 +191,6 @@ static const char *set_engine(cmd_parms *parms, void *mconfig, int arg)
         return "IntervalLimitModule: Failed to retrieve configuration for mod_interval_limit";
     }
     conf->enabled = arg;
-    return NULL;
-}
-
-static const char *set_log(cmd_parms *parms, void *mconfig, int arg)
-{
-    interval_limit_config *conf = mconfig;
-    if (!conf){
-        return "IntervalLimitModule: Failed to retrieve configuration for mod_interval_limit";
-    }
-    conf->log_enabled = arg;
     return NULL;
 }
 
@@ -202,7 +208,7 @@ static const char *set_memc_addr(cmd_parms *parms, void *mconfig, const char *ar
 {
     const char *err;
     char *next, *last, *memc_addr_str;
-    memc_addr_entry *memc_addr;
+    memc_addr_ilimit_entry *memc_addr;
     interval_limit_config *conf = mconfig;
     if (!conf){
         return "IntervalLimitModule: Failed to retrieve configuration for mod_interval_limit";
@@ -215,7 +221,7 @@ static const char *set_memc_addr(cmd_parms *parms, void *mconfig, const char *ar
     next =  (char*)apr_strtok( memc_addr_str, ",", &last);
     while (next) {
         apr_collapse_spaces (next, next);
-        memc_addr = (memc_addr_entry *)apr_array_push(conf->memc_addrs);
+        memc_addr = (memc_addr_ilimit_entry *)apr_array_push(conf->memc_addrs);
         if( (err = parse_memc_addr(parms->pool, next, memc_addr))!=NULL ) {
             return apr_psprintf(parms->pool, "IntervalLimitModule: %s", err);
         }
@@ -233,12 +239,21 @@ static const char *set_rule(cmd_parms *parms, void *mconfig, const char *arg)
     if (!conf){
         return "IntervalLimitModule: Failed to retrieve configuration for mod_interval_limit";
     }
+    /* check if the number of rules exceeds MAX_RULE */
+    if (conf->rules->nelts > MAX_RULE) {
+        return apr_psprintf(parms->pool, "IntervalLimitModule: Cannot define more %d rules!", MAX_RULE);
+    }
+
     rule = (rule_entry *)apr_array_push(conf->rules);
     val = (char*)apr_pstrdup(parms->pool, (char*)arg);
 
     /*  parse the rule argument line */
     if ( (err = parse_rule_line(parms->pool, val, rule) )!=NULL){
         return apr_psprintf(parms->pool, "IntervalLimitModule: %s", err);
+    }
+    /* check if there is no duplication among the names of rules */
+    if (check_rule_name_duplication(rule->name, conf->rules)) {
+        return apr_psprintf(parms->pool, "parse_rule_line: rule name duplication error: %s",rule->name);
     }
     return NULL;
 }
@@ -247,8 +262,7 @@ static void* interval_limit_create_dir_config(apr_pool_t *p, char *d)
 {
     interval_limit_config* conf = apr_pcalloc(p, sizeof(interval_limit_config));
     conf->enabled = 0;
-    conf->log_enabled = 0;
-    conf->memc_addrs =apr_array_make(p, INIT_MEMC_ADDR, sizeof(memc_addr_entry));
+    conf->memc_addrs =apr_array_make(p, INIT_MEMC_ADDR, sizeof(memc_addr_ilimit_entry));
     conf->rules = apr_array_make(p, INIT_RULE, sizeof(rule_entry));
     conf->cookie_name = NULL;
     return conf;
@@ -333,7 +347,7 @@ static int get_block_and_count_value(request_rec *r, const char *blockkey, const
     *(keys) = blockkey;
     *(keys+1) = countkey;
     results = apr_table_make(r->pool, 2);
-    if( memcached_mget_func(r, keys, 2, results) < 0 ) {
+    if( memcached_mget_ilimit_func(r, keys, 2, results) < 0 ) {
         return -1;
     }
     arr = apr_table_elts(results);
@@ -360,15 +374,15 @@ static int apply_rules(request_rec *r, apr_array_header_t *rules, apr_array_head
     interval_limit_config *conf = ap_get_module_config(r->per_dir_config, &interval_limit_module);
 
     if (rules) {
-        // init local vars
+        /* init local vars */
         blockkey = NULL; countkey = NULL;
         blockval = NULL; countval = NULL;
-        // init memcached
-        ret = memcached_init_func(r, conf->memc_addrs);
+        /* init memcached */
+        ret = memcached_init_ilimit_func(r, conf->memc_addrs);
         if (ret < 0) {
             return -1;
         }
-        // apply rules
+        /* apply rules */
         rs = (rule_entry *)rules->elts;
         for ( i =0; i <rules->nelts; i++) {
             rule =  &rs[i];
@@ -383,6 +397,11 @@ static int apply_rules(request_rec *r, apr_array_header_t *rules, apr_array_head
             if ( rule->type == THRESHOLD_IP) {
                 id = r->connection->remote_ip;
             } else if (rule->type == THRESHOLD_COOKIE) {
+                if (!conf->cookie_name) {
+                    ILLOG_ERROR(r, MODTAG "no cookie name specified even if you choose cookie as user identifier! "
+                                  "you must specify cookie name with IntervalLimitCookieName directive");
+                    continue;
+                }
                 cookie = find_cookie(r, conf->cookie_name);
                 if (!cookie) {
                     continue;
@@ -400,19 +419,19 @@ static int apply_rules(request_rec *r, apr_array_header_t *rules, apr_array_head
             countkey = (char*)apr_psprintf(r->pool, "%s-%s-%s",
                             MEMC_KEY_PREFIX_COUNTING, rule->name, id);
             blockval = NULL; countval = NULL;
-            // key encode
+            /* key encode */
             blockkey = get_encoded_string(r, blockkey);
             countkey = get_encoded_string(r, countkey);
             ILLOG_DEBUG(r, MODTAG "apply_rule request: id(raw)=%s blockkey=%s countkey=%s", id, blockkey, countkey);
-            // get block + count value
+            /* get block + count value */
             ret = get_block_and_count_value(r, blockkey, countkey, &blockval, &countval);
             if ( ret < 0 ) {
                  continue;
             }
             go_to_blockedperiod = 0;
-            // check if the id is not in the blocking period
+            /* check if requestin user is not in the blocking period */
             if ( blockval && !strcmp(blockval, MEMC_VAl_BLOCKED_PERIOD) ) {
-                // append to threshold_exceeded
+                /* append to threshold_exceeded */
                 threshold_exceeded = (threshold_exceeded_entry *)apr_array_push(threshold_exceededs);
                 threshold_exceeded->name = rule->name;
                 threshold_exceeded->block = rule->block;
@@ -420,12 +439,12 @@ static int apply_rules(request_rec *r, apr_array_header_t *rules, apr_array_head
                             rule->name, rule->block );
                 continue;
             }
-            // check if the count has already exceeded threshold
+            /* check if the count has already exceeded threshold */
             if ( countval && atoi(countval) >= rule->max_count) {
                 go_to_blockedperiod = 1;
-            // check if the count hits threshold after incremented
+            /* check if the count hits threshold after incremented */
             } else {
-                ret = memcached_incr_func(r, countkey, rule->interval, &incred_count);
+                ret = memcached_incr_ilimit_func(r, countkey, rule->interval, &incred_count);
                 if (ret < 0) {
                     ILLOG_ERROR(r, MODTAG "apply_rule increment count failure: rule=%s", rule->name );
                     continue;
@@ -435,19 +454,19 @@ static int apply_rules(request_rec *r, apr_array_header_t *rules, apr_array_head
                 }
             }
             if (go_to_blockedperiod){
-                // append to threshold_exceeded
+                /* append to threshold_exceeded */
                 threshold_exceeded = (threshold_exceeded_entry *)apr_array_push(threshold_exceededs);
                 threshold_exceeded->name = rule->name;
                 threshold_exceeded->block = rule->block;
 
-                // set blockperiod flag
-                ret = memcached_set_func(r, blockkey, (const char*)MEMC_VAl_BLOCKED_PERIOD, rule->blocking_period);
+                /* set blockperiod flag */
+                ret = memcached_set_ilimit_func(r, blockkey, (const char*)MEMC_VAl_BLOCKED_PERIOD, rule->blocking_period);
                 if (ret < 0) {
                     ILLOG_ERROR(r, MODTAG "apply_rule set blockperiod flag failure: rule=%s", rule->name );
                     continue;
                 }
-                // reset count slot
-                ret = memcached_del_func(r, countkey);
+                /* reset count slot */
+                ret = memcached_del_ilimit_func(r, countkey);
                 if (ret < 0) {
                     ILLOG_ERROR(r, MODTAG "apply_rule reset counter slot failure: rule=%s", rule->name );
                     continue;
@@ -517,8 +536,6 @@ static const command_rec interval_limit_cmds[] =
 {
     AP_INIT_FLAG("IntervalLimitEngine", set_engine, NULL,
         OR_FILEINFO, "set \"On\" to enable interval_limit, \"Off\" to disable"),
-    AP_INIT_FLAG("IntervalLimitLog", set_log, NULL,
-        OR_FILEINFO, "set \"On\" to enable logging, \"Off\" to disable"),
     AP_INIT_TAKE1("IntervalLimitCookieName",set_cookie_name, NULL,
         OR_FILEINFO, "Name of cookie to lookup"),
     AP_INIT_TAKE1("IntervalLimitMemcachedAddrPort", set_memc_addr, NULL,
