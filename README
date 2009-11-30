@@ -73,7 +73,7 @@ o IntervalLimitEngine
 o IntervalLimitCookieName
 
     Description: Set key name of cookie so as for the cookie value to
-            be used for user's identification.  Is is required when "cookie" is
+            be used for user's identification.  It is required when "cookie" is
             choosed as a user identifier in IntervalLimitRule directive.
     Syntax: IntervalLimitCookieName cookieName
     Context: server config, virtual host, directory, .htaccess
@@ -96,7 +96,7 @@ o IntervalLimitRule
     Description: Set an interval limit rule line. Multiple rules can be defined at once.
             Maximum number of rules is 5, and if you define more than 5 rules, you will
             get error message in configuration process.
-            @see [IntervalLimitRule Format] for the rule line format.
+            @see [IntervalLimitRule Format] for the detail of rule line format.
     Syntax: IntervalLimitRule rule
     Context: server config, virtual host, directory, .htaccess
     Status: Extension
@@ -119,11 +119,11 @@ o IntervalLimitRule
 
     * <block period> - The time period, in seconds, during which a requesting user is considered as
                        "exceeded threshold" if the user's interval event counter exceeds "<max event>".
-                       If <block> is equal to "1", the requesting user's access is blocked like ""
+                       If <block> is equal to "1", the requesting user's access is blocked as HTTP_SERVICE_UNAVAILABLE
                        during the block period. After the block period, the counter is reset to 0.
 
     * <block>      -  must be either "1" or "0".
-                     "1"  : block the user access like "" during the block period.
+                     "1"  : block the user access as HTTP_SERVICE_UNAVAILABLE during the block period.
                      "0"  : NOT block the user access during the block period. this means nothing change
                             even if the user's interval event counter exceeds the threshold.
 
@@ -218,12 +218,12 @@ CustomLog logs/clicklog "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agen
 
 
 ====================================================================
-* Application Sample
+* Application Sample to Lookup Env
 ====================================================================
 
 mod_interval_limit adds the names of threshold exceeded rules to apache
 subprocess_env table with the key named "threshold_exceeded_rules".
-Therefore, the info can be applied for scripts language like this below:
+Therefore, you can lookup the info like this below:
 
 o php
 <?php
