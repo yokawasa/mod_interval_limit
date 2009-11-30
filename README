@@ -1,0 +1,243 @@
+/*
+ * README
+ * mod_interval_limit
+ * Apache2.X module that provide rule-based interval counter limits of connections per client
+ */
+
+====================================================================
+* Introduction
+====================================================================
+
+mod_interval_limit is Apache 2.X module that provide rule-based interval
+counter limits of connections per client.
+
+====================================================================
+* Download
+====================================================================
+
+http://code.google.com/p/modintervallimit/downloads/list
+
+====================================================================
+* Prerequisites
+====================================================================
+
+o libevent - used by memcached
+  http://www.monkey.org/~provos/libevent/
+
+o memcached - used as serssion and count storage.
+  memcached-1.4.0 or up, which implements binary protocol, is highly
+  recommended for performance reanson.
+  http://www.danga.com/memcached/
+
+o libmemcached - needed to compile mod_count_memcookie-2.0.0 and up
+  http://tangent.org/552/libmemcached.html
+
+====================================================================
+* Build and Install
+====================================================================
+
+1) extract files from an archive
+tar zxf modintervallimit-<VERSION>.tar.gz
+cd modintervallimit-<VERSION>
+
+[note]
+other than an archive, you can check out current source code from master repo
+git clone git://github.com/yokawasa/mod_count_memcookie.git
+cd mod_count_memcookie
+
+2) open Makefile and modify ap_basedir variable
+vi Makefile
+ ap_basedir=/PATH-TO-APACHE-BASE
+
+3) make and install
+make
+sudo make install
+
+====================================================================
+* Configuration Directives
+====================================================================
+
+All the directives below may be specified in anywhere like Server,
+VirtualHost, Location, and so on.
+
+
+o IntervalLimitEngine
+
+    Description: Set "On" to enable interval_limit, "Off" to disable.
+           Default "Off"
+    Syntax: IntervalLimitEngine On/Off
+    Context: server config, virtual host, directory, .htaccess
+    Status: Extension
+    Module: mod_interval_limit
+
+o IntervalLimitCookieName
+
+    Description: Set key name of cookie so as for the cookie value to
+            be used for user's identification.  Is is required when "cookie" is
+            choosed as a user identifier in IntervalLimitRule directive.
+    Syntax: IntervalLimitCookieName cookieName
+    Context: server config, virtual host, directory, .htaccess
+    Status: Extension
+    Module: mod_interval_limit
+
+o IntervalLimitMemcachedAddrPort
+
+    Description: Liste of the memcached address. each address is ip or host
+            adresse(s) and port ':' separated. The addresses are ',' coma separated.
+            For example:
+            192.168.1.1:11211,192.168.1.2:11211
+    Syntax: IntervalLimitMemcachedAddrPort host1:port1,host2:port2,..
+    Context: server config, virtual host, directory, .htaccess
+    Status: Extension
+    Module: mod_interval_limit
+
+o IntervalLimitRule
+
+    Description: Set an interval limit rule line. Multiple rules can be defined at once.
+            Maximum number of rules is 5, and if you define more than 5 rules, you will
+            get error message in configuration process.
+            @see [IntervalLimitRule Format] for the rule line format.
+    Syntax: IntervalLimitRule rule
+    Context: server config, virtual host, directory, .htaccess
+    Status: Extension
+    Module: mod_interval_limit
+
+[IntervalLimitRule Format]
+    IntervalLimitRule <rule_name> <type:ip|cookie> <max event> <interval(sec)> <block period(sec)> <block:1|0>
+
+    * <rule name>  - The name of rule. each name must be unique.
+
+    * <type>       - The type of user identifier. the value must be either "ip" or "cookie".
+                     1. "ip"      :  ip address of incomming request.
+                     2. "cookie"  :  cookie value of incomming request.
+                     [note] If "cookie" is choosed, the key name of cookie must be specified with
+                            IntervalLimitCookieName directive.
+
+    * <max event>  - The maximum number of events allowed to access in the certain period of time, "<interval>".
+
+    * <interval>   - The time interval, in seconds, at which the number of event counter will be checked.
+
+    * <block period> - The time period, in seconds, during which a requesting user is considered as
+                       "exceeded threshold" if the user's interval event counter exceeds "<max event>".
+                       If <block> is equal to "1", the requesting user's access is blocked like ""
+                       during the block period. After the block period, the counter is reset to 0.
+
+    * <block>      -  must be either "1" or "0".
+                     "1"  : block the user access like "" during the block period.
+                     "0"  : NOT block the user access during the block period. this means nothing change
+                            even if the user's interval event counter exceeds the threshold.
+
+
+    EXAMPLES of IntervalLimitRule
+    ex1.
+    IntervalLimitRule rule_ip1 ip 10 60 60 1
+    #------------------------------------------------------------
+    # rule name        : "rule_ip1"
+    # user identifier  : "ip"
+    # max event        : 10
+    # interval         : 60 sec
+    # block period     : 60 sec
+    # block            : 1 - block the user access
+    #------------------------------------------------------------
+
+    ex2.
+    IntervalLimitRule rule_ip2 ip 100 3600 3600 0
+    #------------------------------------------------------------
+    # rule name        : "rule_ip2"
+    # user identifier  : "ip"
+    # max event        : 100
+    # interval         : 3600 sec (1hr)
+    # block period     : 3600 sec (1hr)
+    # block            : 0 - NOT block
+    #------------------------------------------------------------
+
+    ex3.
+    IntervalLimitRule rule_cookie1 cookie 10 60 60 1
+    #------------------------------------------------------------
+    # rule name        : "rule_cookie1"
+    # user identifier  : "cookie"
+    # max event        : 10
+    # interval         : 60 sec
+    # block period     : 60 sec
+    # block            : 1 - block the user access
+    #------------------------------------------------------------
+
+
+====================================================================
+* Sample Configuration
+====================================================================
+
+1) load module
+LoadModule log_slow_module modules/mod_log_slow.so
+
+2) add directives below
+
+####################################################################
+## (VirtualHost) mod_interval_limit configuration
+####################################################################
+# Enable Engine : On/Off
+IntervalLimitEngine   On
+
+# Memcached address and ports. The addresses are ',' comma separated if there is more than 1.
+# 127.0.0.1:11211
+# 127.0.0.1:11212
+# 127.0.0.1:11213
+IntervalLimitMemcachedAddrPort  127.0.0.1:11211,127.0.0.1:11212,127.0.0.1:11213
+
+# Interval limit rule line
+# Rule Format:
+# IntervalLimitRule <rule_name> <type:ip|cookie> <max event> <interval(sec)> <block period(sec)> <block:1|0>
+IntervalLimitRule rule_ip1 ip 10 60 60 1
+IntervalLimitRule rule_ip2 ip 100 3600 3600 0
+IntervalLimitRule rule_cookie1 cookie 10 60 60 1
+
+# Cookie's key name
+# it is optional but required only if you choose "cookie" as a user identitier in IntervalLimitRule
+IntervalLimitCookieName   Apache
+####################################################################
+
+@see also: sample.conf
+
+====================================================================
+* Interval Counter's Life-Cycle
+====================================================================
+
+
+====================================================================
+* Logging Names of Threshold Exceeded Rules
+====================================================================
+
+The name of rules that threshold exceeded are added to http header table
+with the key name of "threshold_exceeded_rules".
+
+Therefore, you can add the counter info to the "CustomLog" by adding
+the %{threshold_exceeded_rules}i string to log format string of CustomLog directive.
+
+ex.
+CustomLog logs/clicklog "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\" \"%{threshold_exceeded_rules}i\"
+
+
+====================================================================
+* Application Sample
+====================================================================
+
+mod_interval_limit adds the names of threshold exceeded rules to apache
+subprocess_env table with the key named "threshold_exceeded_rules".
+Therefore, the info can be applied for scripts language like this below:
+
+o php
+<?php
+ $count = getenv ( "threshold_exceeded_rules" );
+?>
+
+o perl
+#! /usr/bin/perl
+my $count = $ENV{ "threshold_exceeded_rules" };
+
+@see also: scripts/env_check.php, env_check.pl
+
+====================================================================
+* Authors
+====================================================================
+Yoichi Kawasaki <yokawasa@gmail.com>
+
