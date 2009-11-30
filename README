@@ -29,7 +29,7 @@ o memcached - used as serssion and count storage.
   recommended for performance reanson.
   http://www.danga.com/memcached/
 
-o libmemcached - needed to compile mod_count_memcookie-2.0.0 and up
+o libmemcached - needed to compile
   http://tangent.org/552/libmemcached.html
 
 ====================================================================
@@ -42,8 +42,8 @@ cd modintervallimit-<VERSION>
 
 [note]
 other than an archive, you can check out current source code from master repo
-git clone git://github.com/yokawasa/mod_count_memcookie.git
-cd mod_count_memcookie
+git clone git://github.com/yokawasa/mod_interval_limit.git
+cd mod_interval_limit
 
 2) open Makefile and modify ap_basedir variable
 vi Makefile
