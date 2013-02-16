@@ -87,7 +87,7 @@ static void dump_rules(request_rec *r, apr_array_header_t *rules)
         rs = (rule_entry *)rules->elts;
         for ( i =0; i <rules->nelts; i++) {
             rule =  &rs[i];
-            ILLOG_DEBUG(r, MODTAG "dump rule %s type %d maxcount %d interval %d blockperiod %d block %d",
+            ILLOG_DEBUG(r, MODTAG "dump rule %s type %d maxcount %ld interval %ld blockperiod %ld block %d",
                         rule->name,
                         rule->type,
                         rule->max_count,
@@ -387,7 +387,7 @@ static int apply_rules(request_rec *r, apr_array_header_t *rules, apr_array_head
         for ( i =0; i <rules->nelts; i++) {
             rule =  &rs[i];
             id = NULL;
-            ILLOG_DEBUG(r, MODTAG "apply_rule %s type %d maxcount %d interval %d blockperiod %d block %d",
+            ILLOG_DEBUG(r, MODTAG "apply_rule %s type %d maxcount %ld interval %ld blockperiod %ld block %d",
                         rule->name,
                         rule->type,
                         rule->max_count,
