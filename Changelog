@@ -1,3 +1,7 @@
+2013-02-17  [Version 0.0.2 released]
+    * fix: Compile errors due to "no member exists in memcached_st struct".
+    * fix: GCC compile warning message
+
 2009-11-29
     * initial entry: README
     * fix: add validation check on IntervalLimitRule directive configuration
