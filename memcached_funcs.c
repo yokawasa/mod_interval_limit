@@ -89,20 +89,20 @@ int _init_ilimit_func(request_rec *r, apr_array_header_t *memc_addrs)
         */
         memcached_version(memc);
         for ( i =0; i <memc->number_of_hosts; i++) {
-            if (memc->hosts[i].major_version >= 1 && memc->hosts[i].minor_version >= 4) {
+            if (memc->servers[i].major_version >= 1 && memc->servers[i].minor_version >= 4) {
 //                ILLOG_DEBUG(r, MODTAG "use \"incr command\" of memcached for count increment :"
 //                    "server=%s:%d major=%d minor=%d",
-//                    memc->hosts[i].hostname,memc->hosts[i].port,
+//                    memc->servers[i].hostname,memc->servers[i].port,
 //                    memc->hosts[i].major_version, memc->hosts[i].minor_version);
                     binary_available=1;
             } else {
-                if (memc->hosts[i].major_version != 0 && memc->hosts[i].minor_version != 0) {
+                if (memc->servers[i].major_version != 0 && memc->servers[i].minor_version != 0) {
                     ILLOG_DEBUG(r,
                         MODTAG "memcached version has to be 1.4.0 or up for count increment "
                         "to be done by \"incr command\" with libmemcached :"
                         "server=%s:%d major=%d minor=%d",
-                        memc->hosts[i].hostname, memc->hosts[i].port,
-                        memc->hosts[i].major_version, memc->hosts[i].minor_version);
+                        memc->servers[i].hostname, memc->servers[i].port,
+                        memc->servers[i].major_version, memc->servers[i].minor_version);
                     binary_available=0;
                 }
             }
