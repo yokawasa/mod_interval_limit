@@ -93,7 +93,7 @@ int _init_ilimit_func(request_rec *r, apr_array_header_t *memc_addrs)
 //                ILLOG_DEBUG(r, MODTAG "use \"incr command\" of memcached for count increment :"
 //                    "server=%s:%d major=%d minor=%d",
 //                    memc->servers[i].hostname,memc->servers[i].port,
-//                    memc->hosts[i].major_version, memc->hosts[i].minor_version);
+//                    memc->servers[i].major_version, memc->servers[i].minor_version);
                     binary_available=1;
             } else {
                 if (memc->servers[i].major_version != 0 && memc->servers[i].minor_version != 0) {
