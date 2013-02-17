@@ -31,7 +31,7 @@ o memcached - used as serssion and count storage.
 
 o libmemcached - used as memcached c client library
  http://libmemcached.org/libMemcached.html
- use libmemcached-0.38 or up for mod_interval_limit-0.0.2 or up
+ use libmemcached-0.38 or up for mod_interval_limit-1.0.1 or up
 
 ====================================================================
 * Build and Install
