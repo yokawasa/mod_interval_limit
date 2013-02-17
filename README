@@ -29,8 +29,9 @@ o memcached - used as serssion and count storage.
   recommended for performance reanson.
   http://www.danga.com/memcached/
 
-o libmemcached - needed to compile
-  http://tangent.org/552/libmemcached.html
+o libmemcached - used as memcached c client library
+ http://libmemcached.org/libMemcached.html
+ use libmemcached-0.38 or up for mod_interval_limit-0.0.2 or up
 
 ====================================================================
 * Build and Install
