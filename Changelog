@@ -1,4 +1,4 @@
-2013-02-17  [Version 0.0.2 released]
+2013-02-17  [Version 1.0.2 released]
     * fix: Compile errors due to "no member exists in memcached_st struct".
     * fix: GCC compile warning message
 
@@ -10,5 +10,5 @@
     * fix: modules.mk
     * fix: interface functions' name on memcached_func.h to avoid symbol name collision.
 
-2009-11-08  [Version 0.0.1 released]
+2009-11-08  [Version 1.0.0 released]
     * Initial Release
