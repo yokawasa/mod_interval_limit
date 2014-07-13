@@ -1,3 +1,9 @@
+2014-07-13  [Version 1.0.2 released]
+    * add a prerequiste for memcached version: memcached-1.4.0 or up
+    * fix: compile error and warning memcached_funcs.c
+    * rename sample.conf to sample_mod_interval_limit.conf
+    * add sample_mod_usertrack.conf
+
 2013-02-17  [Version 1.0.1 released]
     * fix: Compile errors due to "no member exists in memcached_st struct".
     * fix: GCC compile warning message
