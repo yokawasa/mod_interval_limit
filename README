@@ -11,6 +11,26 @@
 mod_interval_limit is Apache 2.X module that provide rule-based interval
 counter limits of connections per client.
 
+The counter is stored in memcached, and the user's cookie string is
+used as the key to identify the user's counter. Every time the user
+hit the site, the user's counter is retrieved from memcached by
+specifying the user cookie string, and is stored back again after
+the counter is incremented. If the counter does not exist in memcached,
+then the counter is initialized to 1.
+
+As one of prerequisites of mod_interval_limit, it needs to be used
+in conjunction with a cookie creating module, such as mod_usertrack,
+or some other substitution applications since it uses the user's
+cookie string for the identification of the user and its' counter
+value stored in memcached.
+
+On the plus side, it allows more than one Apache server to share
+the same cached data, thus fits very much in scale-out architecture
+system. In addtion, the counter info can be applied for simple spam
+proxy server by, for example, blocking the user with over the
+counter limit of the site.
+
+
 ====================================================================
 * Download
 ====================================================================
@@ -25,13 +45,14 @@ o libevent - used by memcached
   http://www.monkey.org/~provos/libevent/
 
 o memcached - used as serssion and count storage.
-  memcached-1.4.0 or up, which implements binary protocol, is highly
-  recommended for performance reanson.
-  http://www.danga.com/memcached/
+  memcached-1.4.0 or up, which implements binary protocol, must 
+  be used.
+  http://memcached.org/
+
 
 o libmemcached - used as memcached c client library
- http://libmemcached.org/libMemcached.html
- use libmemcached-0.38 or up for mod_interval_limit-1.0.1 or up
+  http://libmemcached.org/libMemcached.html
+  use libmemcached-0.38 or up for mod_interval_limit-1.0.1 or up
 
 ====================================================================
 * Build and Install
@@ -42,7 +63,8 @@ tar zxf modintervallimit-<VERSION>.tar.gz
 cd modintervallimit-<VERSION>
 
 [note]
-other than an archive, you can check out current source code from master repo
+other than an archive, you can check out current source code from
+master repository
 git clone git://github.com/yokawasa/mod_interval_limit.git
 cd mod_interval_limit
 
@@ -64,104 +86,104 @@ VirtualHost, Location, and so on.
 
 o IntervalLimitEngine
 
-    Description: Set "On" to enable interval_limit, "Off" to disable.
-           Default "Off"
-    Syntax: IntervalLimitEngine On/Off
-    Context: server config, virtual host, directory, .htaccess
-    Status: Extension
-    Module: mod_interval_limit
+  Description: Set "On" to enable interval_limit, "Off" to disable.
+         Default "Off"
+  Syntax: IntervalLimitEngine On/Off
+  Context: server config, virtual host, directory, .htaccess
+  Status: Extension
+  Module: mod_interval_limit
 
 o IntervalLimitCookieName
 
-    Description: Set key name of cookie so as for the cookie value to
-            be used for user's identification.  It is required when "cookie" is
-            choosed as a user identifier in IntervalLimitRule directive.
-    Syntax: IntervalLimitCookieName cookieName
-    Context: server config, virtual host, directory, .htaccess
-    Status: Extension
-    Module: mod_interval_limit
+  Description: Set key name of cookie so as for the cookie value to
+          be used for user's identification.  It is required when "cookie" is
+          choosed as a user identifier in IntervalLimitRule directive.
+  Syntax: IntervalLimitCookieName cookieName
+  Context: server config, virtual host, directory, .htaccess
+  Status: Extension
+  Module: mod_interval_limit
 
 o IntervalLimitMemcachedAddrPort
 
-    Description: Liste of the memcached address. each address is ip or host
-            adresse(s) and port ':' separated. The addresses are ',' coma separated.
-            For example:
-            192.168.1.1:11211,192.168.1.2:11211
-    Syntax: IntervalLimitMemcachedAddrPort host1:port1,host2:port2,..
-    Context: server config, virtual host, directory, .htaccess
-    Status: Extension
-    Module: mod_interval_limit
+  Description: Liste of the memcached address. each address is ip or host
+          adresse(s) and port ':' separated. The addresses are ',' coma separated.
+          For example:
+          192.168.1.1:11211,192.168.1.2:11211
+  Syntax: IntervalLimitMemcachedAddrPort host1:port1,host2:port2,..
+  Context: server config, virtual host, directory, .htaccess
+  Status: Extension
+  Module: mod_interval_limit
 
 o IntervalLimitRule
 
-    Description: Set an interval limit rule line. Multiple rules can be defined at once.
-            Maximum number of rules is 5, and if you define more than 5 rules, you will
-            get error message in configuration process.
-            @see [IntervalLimitRule Format] for the detail of rule line format.
-    Syntax: IntervalLimitRule rule
-    Context: server config, virtual host, directory, .htaccess
-    Status: Extension
-    Module: mod_interval_limit
+  Description: Set an interval limit rule line. Multiple rules can be defined at once.
+         Maximum number of rules is 5, and if you define more than 5 rules, you will
+         get error message in configuration process.
+         @see [IntervalLimitRule Format] for the detail of rule line format.
+  Syntax: IntervalLimitRule rule
+  Context: server config, virtual host, directory, .htaccess
+  Status: Extension
+  Module: mod_interval_limit
 
 [IntervalLimitRule Format]
-    IntervalLimitRule <rule_name> <type:ip|cookie> <max event> <interval(sec)> <block period(sec)> <block:1|0>
+IntervalLimitRule <rule_name> <type:ip|cookie> <max event> <interval(sec)> <block period(sec)> <block:1|0>
 
-    * <rule name>  - The name of rule. each name must be unique.
+ * <rule name>  - The name of rule. each name must be unique.
 
-    * <type>       - The type of user identifier. the value must be either "ip" or "cookie".
-                     1. "ip"      :  ip address of incomming request.
-                     2. "cookie"  :  cookie value of incomming request.
-                     [note] If "cookie" is choosed, the key name of cookie must be specified with
-                            IntervalLimitCookieName directive.
+ * <type>       - The type of user identifier. the value must be either "ip" or "cookie".
+                  1. "ip"      :  ip address of incomming request.
+                  2. "cookie"  :  cookie value of incomming request.
+                  [note] If "cookie" is choosed, the key name of cookie must be specified with
+                        IntervalLimitCookieName directive.
 
-    * <max event>  - The maximum number of events allowed to access in the certain period of time, "<interval>".
+ * <max event>  - The maximum number of events allowed to access in the certain period of time, "<interval>".
 
-    * <interval>   - The time interval, in seconds, at which the number of event counter will be checked.
+ * <interval>   - The time interval, in seconds, at which the number of event counter will be checked.
 
-    * <block period> - The time period, in seconds, during which a requesting user is considered as
-                       "exceeded threshold" if the user's interval event counter exceeds "<max event>".
-                       If <block> is equal to "1", the requesting user's access is blocked as HTTP_SERVICE_UNAVAILABLE
-                       during the block period. After the block period, the counter is reset to 0.
+ * <block period> - The time period, in seconds, during which a requesting user is considered as
+                   "exceeded threshold" if the user's interval event counter exceeds "<max event>".
+                   If <block> is equal to "1", the requesting user's access is blocked as HTTP_SERVICE_UNAVAILABLE
+                   during the block period. After the block period, the counter is reset to 0.
 
-    * <block>      -  must be either "1" or "0".
-                     "1"  : block the user access as HTTP_SERVICE_UNAVAILABLE during the block period.
-                     "0"  : NOT block the user access during the block period. this means nothing change
-                            even if the user's interval event counter exceeds the threshold.
+ * <block>      -  must be either "1" or "0".
+                  "1"  : block the user access as HTTP_SERVICE_UNAVAILABLE during the block period.
+                  "0"  : NOT block the user access during the block period. this means nothing change
+                         even if the user's interval event counter exceeds the threshold.
 
 
-    EXAMPLES of IntervalLimitRule
-    ex1.
-    IntervalLimitRule rule_ip1 ip 10 60 60 1
-    #------------------------------------------------------------
-    # rule name        : "rule_ip1"
-    # user identifier  : "ip"
-    # max event        : 10
-    # interval         : 60 sec
-    # block period     : 60 sec
-    # block            : 1 - block the user access
-    #------------------------------------------------------------
+EXAMPLES of IntervalLimitRule
+ex1.
+IntervalLimitRule rule_ip1 ip 10 60 60 1
+#------------------------------------------------------------
+# rule name        : "rule_ip1"
+# user identifier  : "ip"
+# max event        : 10
+# interval         : 60 sec
+# block period     : 60 sec
+# block            : 1 - block the user access
+#------------------------------------------------------------
 
-    ex2.
-    IntervalLimitRule rule_ip2 ip 100 3600 3600 0
-    #------------------------------------------------------------
-    # rule name        : "rule_ip2"
-    # user identifier  : "ip"
-    # max event        : 100
-    # interval         : 3600 sec (1hr)
-    # block period     : 3600 sec (1hr)
-    # block            : 0 - NOT block
-    #------------------------------------------------------------
+ex2.
+IntervalLimitRule rule_ip2 ip 100 3600 3600 0
+#------------------------------------------------------------
+# rule name        : "rule_ip2"
+# user identifier  : "ip"
+# max event        : 100
+# interval         : 3600 sec (1hr)
+# block period     : 3600 sec (1hr)
+# block            : 0 - NOT block
+#------------------------------------------------------------
 
-    ex3.
-    IntervalLimitRule rule_cookie1 cookie 10 60 60 1
-    #------------------------------------------------------------
-    # rule name        : "rule_cookie1"
-    # user identifier  : "cookie"
-    # max event        : 10
-    # interval         : 60 sec
-    # block period     : 60 sec
-    # block            : 1 - block the user access
-    #------------------------------------------------------------
+ex3.
+IntervalLimitRule rule_cookie1 cookie 10 60 60 1
+#------------------------------------------------------------
+# rule name        : "rule_cookie1"
+# user identifier  : "cookie"
+# max event        : 10
+# interval         : 60 sec
+# block period     : 60 sec
+# block            : 1 - block the user access
+#------------------------------------------------------------
 
 
 ====================================================================
@@ -197,7 +219,25 @@ IntervalLimitRule rule_cookie1 cookie 10 60 60 1
 IntervalLimitCookieName   Apache
 ####################################################################
 
-@see also: sample.conf
+@see also: sample_mod_interval_limit.conf
+
+
+[note]
+As described in "Introduction" secion above, mod_count_memcookie
+needs to be used in conjunction with a cookie creating module,
+such as mod_usertrack, or some other substitution applications
+since it uses the user's cookie string for the identification of 
+the user and its' counter value stored in memcached.
+
+Here is an example configuration for mod_usertrack:
+
+LoadModule usertrack_module modules/mod_usertrack.so
+CookieTracking on
+CookieName Apache
+CookieExpires "1 months"
+
+see also: sample_mod_usertrack.conf
+
 
 ====================================================================
 * Interval Counter's Life-Cycle
